@@ -202,6 +202,37 @@ Android-klientens credentials, ikke ved å sniffe en kjørende app.
 Et fanget app-token er ikke nødvendigvis brukbart uten klientens
 autentiseringsmetode.
 
+### Avgrenset test av mobilklientens code- og refresh-grant
+
+Et senere, eksplisitt godkjent forsøk brukte statisk APK-inspeksjon for å
+hente mobilklientens credentials, uten emulator eller kjøring av appen.
+APK-en kom fra APKPure; utgiverens autentisitet og APK-signaturen er ikke
+verifisert. Credential-strengene ble kontrollert mot APK-ens DEX-strenger,
+og issuer og callback samsvarte med connectorens konfigurasjon.
+
+Manuell ID-porten-innlogging og kodeutveksling mot den faste Vigilo-issueren
+ga access- og refresh-token. Den observerte app-callbacken hadde en ekstra
+rot-slash; scheme, authority og state ble kontrollert, og andre stier ble
+avvist. Ingen BankID-trafikk ble fanget.
+
+Etter at både nettleser og ChromeDriver var lukket, fungerte én refresh i
+en separat HTTP-prosess med bare refresh-token og klientautentisering,
+uten cookies. Refresh-tokenet roterte, access-tokenet endret seg, og
+`expires_in` var 600 sekunder. Responsen inneholdt ikke et `scope`-felt.
+Refresh-tokenets levetid og gjenbruk på en senere dag er fortsatt ukjent.
+
+Det fornyede tokenet ga HTTP 200 fra web-ruten `/api/children/my`.
+Målbarnet kunne identifiseres entydig etter første fornavn, og
+organisasjonsenheter var tilgjengelige. AKS-dekning ble ikke bekreftet i
+denne responsen; dette beviser ikke at kontoen mangler AKS-tilgang.
+Ingen meldinger eller vedlegg ble åpnet under denne testen.
+
+Credentials og roterte tokens er lagret i separate lokale filer med modus
+0600, utenfor repoet. Midlertidige analyseverktøy og testskript er fjernet.
+Dette etablerer lokal headless refresh, ikke en implementert collector,
+full dekning eller varig ubemannet drift. Ingen credentials er overført
+til en ekstern maskin, og ingen jobb er planlagt.
+
 ## Videre arbeid
 
 Verifiser først offisiell web-innlogging i en dedikert lokal nettleserprofil,

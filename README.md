@@ -144,8 +144,35 @@ utestet.
 
 Dette validerer tilgang via den offisielle UI-sesjonen, **ikke end-to-end
 innlogging eller innsamling med denne Python-klienten**. Web-detaljruten er
-ikke koblet inn i klienten ennå. En nettleserbasert auth-backend og en minimert,
+ikke koblet inn i klienten ennå. En auth-backend for den offisielle web-sesjonen og en minimert,
 barn-avgrenset eksport krever en egen implementasjon etter denne milepælen.
+
+### Avgrenset nettleserfri tokenfornyelse (2026-10-13)
+
+Web-klientens faktiske konfigurasjon bruker den implisitte OIDC-flyten
+`response_type=id_token token`, uten `offline_access`. Det undersøkte
+sesjonslageret inneholdt access-token, men ikke refresh-token. En normal
+automatisk fornyelse i nettleseren ble observert via autoriseringsendepunktet
+med `prompt=none`.
+
+Etter at både nettleser og ChromeDriver var lukket, klarte en separat
+HTTP-prosess å gjenta denne observerte autoriseringsoperasjonen med bare
+Vigilo-issuerens sesjonscookies. En ny prosess klarte også å gjenta den fra
+privat lagrede credentials. Callbackens mål og `state` ble kontrollert
+lokalt; ingen callback-URL eller tokenverdi ble skrevet ut.
+Nye access-tokens hadde `expires_in=600`, og fungerte i en cookie-fri
+forespørsel til den faste `/api/children/my`-ruten.
+
+Dette viser en nettleserfri vei **mens Vigilo-sesjonen er gyldig**, ikke et
+OAuth refresh-token eller en dokumentert langtidsintegrasjon. Ingen
+ID-porten-/BankID-cookies, mobilklienthemmeligheter eller nye scopes ble brukt.
+Credentials ble holdt i en privat lokal fil utenfor repoet, ikke overført
+til en annen maskin. Sesjonens senere-dag-levetid er fortsatt utestet.
+
+Den eksisterende `TokenStore` bruker mobilklientens refresh-grant og kan ikke
+bruke denne sesjonsbaserte metoden direkte. En ny, fast-origin web-auth-backend
+trengs før produksjonsbruk. Ved `login_required` eller annen interaksjon som
+kreves, må den stoppe og be om manuell innlogging, ikke håndtere BankID.
 
 ## Videre arbeid
 

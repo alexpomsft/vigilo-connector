@@ -7,8 +7,9 @@ nyheter m.m. og aksjonere på dem. Auth-flyten er inspirert av kartleggingen i
 
 **Kun til personlig bruk** med egen foreldretilgang. API-et er reverse-engineert
 og kan endres av Vigilo uten varsel — respektér Vigilos vilkår, og ikke hent mer
-data enn du selv har tilgang til. Tokens og data holdes lokalt
-(`~/.config/vigilo-connector/`, chmod 600) og legges aldri inn i repoet.
+data enn du selv har tilgang til. Tokenfiler lagres lokalt
+(`~/.config/vigilo-connector/`, filmodus 600) og legges aldri inn i repoet.
+MCP-verktøyene returnerer data til klienten; de garanterer ikke lokal behandling.
 
 ## Status for denne forken
 
@@ -102,7 +103,8 @@ UUID-er. `week` er ISO-format `YYYY-WW` (default inneværende uke).
 
 ## Kartlagte web-endepunkter
 
-Ruter fra upstream-kartleggingen, ikke live-verifisert for Oslo i denne forken.
+Ruter fra upstream-kartleggingen. Bare det avgrensede utvalget i
+web-verifiseringen nedenfor er bekreftet mot den offisielle UI-sesjonen.
 Base `https://web-parent.prod.vigilo-oas.no`, alle GET, Bearer-auth.
 GET garanterer ikke at en melding forblir ulest.
 
@@ -114,6 +116,36 @@ GET garanterer ikke at en melding forblir ulest.
 - `/api/students/{childId}/lessons?organizationalUnitId=&week=YYYY-WW`
 - `/api/scheduling-events/{childId}/student?organizationalUnitId=&week=YYYY-WW`
 - `/api/school-years?organizationalUnitId=`
+
+### Avgrenset web-verifisering (2026-10-13)
+
+En lokal test med manuell ID-porten og offisiell foreldreportal bekreftet at
+portalens egne forespørsler bruker Bearer-auth og gir HTTP 200 fra
+`/api/children/my`, `/api/news-feed`, `/api/message-threads` og
+`/api/message-threads/{threadId}`. Ingen tokens eller credentials ble flyttet
+til connectoren, og mobilinnloggingen ble ikke brukt.
+
+Meldingslisten hadde `items` med `body`, `createdAt` (ISO-dato med tidssone),
+`isRead` og `hasAttachments`. En allerede lest detalj hadde `messages`,
+`text`, `createdAt` og `attachments`. Vedleggsinnhold ble ikke hentet.
+News-feed ga ingen innholdsposter i den testede forespørselen; full
+nyhetsdekning og paginering er ikke verifisert.
+
+Barnedata kan ha flere `organizationalUnits`, inkludert AKS. Den eksisterende
+`children()`-flattingen beholder bare første enhet/gruppe og er derfor ikke
+en fullstendig skole/AKS-modell. En collector må beholde og verifisere alle
+relevante enheter, ikke anta at første enhet er riktig.
+
+Detaljåpning utløste også en ekstra GET med HTTP 204. Semantikken er ikke
+fastslått; behandle detaljåpning som potensielt lesestatus-endrende.
+Gjenlasting fungerte i samme nettleserprosess. En tidligere omstart gikk
+tilbake til ID-porten; senere-dag-gjenbruk og automatisk fornyelse er fortsatt
+utestet.
+
+Dette validerer tilgang via den offisielle UI-sesjonen, **ikke end-to-end
+innlogging eller innsamling med denne Python-klienten**. Web-detaljruten er
+ikke koblet inn i klienten ennå. En nettleserbasert auth-backend og en minimert,
+barn-avgrenset eksport krever en egen implementasjon etter denne milepælen.
 
 ## Videre arbeid
 

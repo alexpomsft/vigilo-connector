@@ -1,11 +1,11 @@
 """OAuth2 mot Vigilos auth-server.
 
-Flyten er authorization code + PKCE mot appens registrerte client. Redirecten
+Flyten er authorization code uten PKCE mot appens registrerte client. Redirecten
 går til et custom app-scheme som nettlesere ikke kan følge, så koden må
 copy-pastes fra den feilede adressen (se README og `login.py`).
 
-Refresh-tokens roterer ved bruk og utløper etter 30-90 dager; da må
-`vigilo-login` kjøres på nytt.
+Refresh-tokens roterer ved bruk. Levetiden må verifiseres for den aktuelle
+innloggingen.
 """
 
 import base64
@@ -66,7 +66,7 @@ def _token_request(data: dict) -> dict:
         timeout=30,
     )
     if r.status_code in (400, 401):
-        raise AuthError(f"Token-kall avvist ({r.status_code}): {r.text[:300]}")
+        raise AuthError(f"Token-kall avvist (HTTP {r.status_code}).")
     r.raise_for_status()
     return r.json()
 
@@ -104,7 +104,7 @@ def code_from_cookies(cookie_header: str) -> str:
         raise AuthError("state i redirecten matcher ikke — prøv på nytt.")
     code = params.get("code", [None])[0]
     if not code:
-        raise AuthError(f"Fant ingen code i redirecten. Location: {loc[:200]}")
+        raise AuthError("Fant ingen code i redirecten.")
     return code
 
 

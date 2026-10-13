@@ -1,8 +1,6 @@
 """MCP-server: `vigilo-mcp`.
 
-Eksponerer Vigilos foreldre-API som verktøy for agenten. `api_get` er
-kartleggingsverktøyet: rått GET mot vilkårlig sti bak gatewayen, så nye
-endepunkter kan utforskes rett fra agenten før de blir egne verktøy.
+Eksponerer navngitte operasjoner, ikke vilkårlige autentiserte forespørsler.
 """
 
 import json
@@ -69,25 +67,6 @@ def read_post_attachments(post_id: str) -> str:
     return json.dumps(client().read_post_attachments(post_id), ensure_ascii=False, indent=2)
 
 
-@mcp.tool()
-def api_get(path: str, params_json: str = "{}") -> str:
-    """Rått GET mot foreldre-API-et — for kartlegging av nye endepunkter.
-
-    path: f.eks. "/api/children". params_json: query-parametre som JSON-objekt;
-    userId legges til automatisk om den ikke er satt. Returnerer status og body
-    uansett utfall, så 404/400 også gir informasjon.
-    """
-    params = json.loads(params_json)
-    params.setdefault("userId", client().user_id)
-    r = client().get(path, params=params)
-    body = r.text
-    try:
-        body = json.dumps(r.json(), ensure_ascii=False, indent=2)
-    except ValueError:
-        pass
-    return f"HTTP {r.status_code}\n{body[:20000]}"
-
-
 # --- Web-foreldreportal -------------------------------------------------
 # Timeplan, fravær, samtykke, nyheter m.m. som ikke finnes i app-gatewayen.
 # childId og organizationalUnitId hentes fra web_list_children.
@@ -142,23 +121,6 @@ def scheduling_events(child_id: str, organizational_unit_id: str, week: str = ""
         client().scheduling_events(child_id, organizational_unit_id, week or None),
         ensure_ascii=False, indent=2,
     )
-
-
-@mcp.tool()
-def web_api_get(path: str, params_json: str = "{}") -> str:
-    """Rått GET mot web-foreldreportalen — for kartlegging av nye web-endepunkter.
-
-    path: f.eks. "/api/absences". params_json: query-parametre som JSON-objekt.
-    Ingen userId legges til (web-API-et bruker childIds/organizationalUnitId).
-    Returnerer status og body uansett utfall.
-    """
-    r = client().web_get(path, params=json.loads(params_json))
-    body = r.text
-    try:
-        body = json.dumps(r.json(), ensure_ascii=False, indent=2)
-    except ValueError:
-        pass
-    return f"HTTP {r.status_code}\n{body[:20000]}"
 
 
 def main() -> None:

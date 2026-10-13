@@ -1,18 +1,52 @@
 """HTTP-klient mot Vigilos foreldre-API.
 
-Endepunktene under `# Kjente endepunkter` er verifisert via
-https://github.com/brujoand/vigilo2smtp. Nye endepunkter (ukesplan, nyheter,
-fravær) legges til her etter hvert som de kartlegges — bruk `get()` /
-MCP-verktøyet `api_get` til å utforske.
+Bare eksplisitt tillatte ruter kan motta autentiseringsheadere.
+Nye endepunkter krever en egen operasjon og en oppdatert ruteliste.
 """
 
 import io
+import re
 from datetime import date, timedelta
 
 import httpx
 
 from .auth import AuthError, TokenStore, user_id_from_jwt
 from .config import API_BASE, APP_VERSION, WEB_API_BASE
+
+
+_ID = r"[A-Za-z0-9_-]+"
+_APP_ROUTES = (
+    r"/api/children",
+    r"/api/message-threads",
+    rf"/api/messages/threads/{_ID}",
+)
+_WEB_ROUTES = (
+    r"/api/children/my",
+    r"/api/current-user",
+    r"/api/news-feed",
+    r"/api/message-threads",
+    r"/api/absences",
+    r"/api/consent-forms",
+    rf"/api/students/{_ID}/lessons",
+    rf"/api/scheduling-events/{_ID}/student",
+    r"/api/school-years",
+    rf"/api/posts/{_ID}",
+    rf"/api/posts/{_ID}/attachments/{_ID}",
+)
+
+
+def _api_url(base: str, path: str, routes: tuple[str, ...]) -> httpx.URL:
+    if not any(re.fullmatch(route, path, flags=re.ASCII) for route in routes):
+        raise ValueError("Authenticated requests require a known API route.")
+    origin = httpx.URL(base)
+    url = httpx.URL(base + path)
+    if (
+        url.scheme != "https"
+        or (url.host, url.port) != (origin.host, origin.port)
+        or url.userinfo
+    ):
+        raise ValueError("Authenticated requests require the fixed HTTPS API origin.")
+    return url
 
 
 def iso_week(d: date | None = None) -> str:
@@ -75,10 +109,16 @@ class VigiloClient:
         return user_id_from_jwt(self._store.access_token())
 
     def get(self, path: str, params: dict | None = None) -> httpx.Response:
-        """Rått GET-kall med auth og retry ved 401. Brukes også til kartlegging."""
-        r = self._http.get(path, params=params, headers=self._headers())
+        """GET til en tillatt app-rute med auth og retry ved 401."""
+        url = _api_url(API_BASE, path, _APP_ROUTES)
+        r = self._http.get(
+            url, params=params, headers=self._headers(), follow_redirects=False
+        )
         if r.status_code == 401:
-            r = self._http.get(path, params=params, headers=self._headers(force_refresh=True))
+            r = self._http.get(
+                url, params=params, headers=self._headers(force_refresh=True),
+                follow_redirects=False,
+            )
         return r
 
     def get_json(self, path: str, params: dict | None = None):
@@ -89,10 +129,16 @@ class VigiloClient:
         return r.json()
 
     def web_get(self, path: str, params: dict | None = None) -> httpx.Response:
-        """Rått GET mot web-foreldreportalen med auth og retry ved 401."""
-        r = self._web.get(path, params=params, headers=self._web_headers())
+        """GET til en tillatt web-rute med auth og retry ved 401."""
+        url = _api_url(WEB_API_BASE, path, _WEB_ROUTES)
+        r = self._web.get(
+            url, params=params, headers=self._web_headers(), follow_redirects=False
+        )
         if r.status_code == 401:
-            r = self._web.get(path, params=params, headers=self._web_headers(force_refresh=True))
+            r = self._web.get(
+                url, params=params, headers=self._web_headers(force_refresh=True),
+                follow_redirects=False,
+            )
         return r
 
     def web_get_json(self, path: str, params: dict | None = None):
@@ -235,9 +281,6 @@ class VigiloClient:
         return self.web_get_json(
             "/api/school-years", params={"organizationalUnitId": organizational_unit_id}
         )
-
-    # TODO(kartlegging): selve karakter-/vurderings-endepunktet laster først
-    # etter valg av skoleår/termin i Vurdering-fanen — sniff det med web_api_get.
 
     # --- Vedlegg (f.eks. ukeplan-PDF i en melding) ----------------------
     # Meldinger fra app-gatewayen (get_thread) har vedlegg med en ferdig-signert

@@ -10,92 +10,47 @@ og kan endres av Vigilo uten varsel — respektér Vigilos vilkår, og ikke hent
 data enn du selv har tilgang til. Tokens og data holdes lokalt
 (`~/.config/vigilo-connector/`, chmod 600) og legges aldri inn i repoet.
 
-## To API-er, ett token
+## Status for denne forken
 
-Connectoren snakker med to endepunkter, og **samme OAuth-token dekker begge**:
+Denne forken fjerner de generiske MCP-verktøyene `api_get` og `web_api_get`.
+Autentiserte forespørsler er begrenset til navngitte, tillatte API-ruter på
+faste HTTPS-domener. Absolutte URL-er, ukjente ruter, sti-traversering og
+redirects kan ikke brukes til å sende tilgangstokenet til et annet mål.
+
+Dette er sikkerhetsherding av den eksisterende klienten, **ikke en verifisert
+Oslo-integrasjon eller en lokal eksportløsning**. Ikke koble MCP-serveren til
+en ekstern briefing: den returnerer rå kontodata og er ikke avgrenset til ett
+barn. Vedleggsverktøyene laster ned innhold og skal ikke brukes i den første
+innsamlingsfasen.
+
+## To API-er
+
+Connectoren har operasjoner for to endepunkter:
 
 - **App-gateway** (`api-gw-parent-app.prod.vigilo-oas.no`) — beskjeder/tråder.
 - **Web-foreldreportal** (`web-parent.prod.vigilo-oas.no`) — timeplan, fravær,
   samtykker, nyheter, vurdering. Det Vigilo-appen ikke eksponerer.
 
-Auth er en konfidensiell OAuth2-client (Basic-auth med client_id/secret, **uten
-PKCE**). Innloggingen federerer via ID-porten. Refresh-tokenet varer 30–90 dager;
-da kjører du `vigilo-login` på nytt.
+Den eksisterende innloggingen krever en konfidensiell OAuth2-klient med
+client_id/secret, uten PKCE. Denne forken skaffer ikke slike credentials.
+Aksept av samme token hos begge API-er, Oslo/AKS-dekning og levetid for
+refresh-token er ikke verifisert her.
 
 ## Oppsett
 
-### 1. Client-credentials fra Android-appen
-
-OAuth-clienten er Vigilos egen Android-app. Hent `client_id` og `client_secret`
-fra APK-en (`parent.vigilo.no.parentapplication`):
-
-1. Last ned APK-en, f.eks. med [`apkeep`](https://github.com/EFForg/apkeep):
-   `apkeep -a parent.vigilo.no.parentapplication .`
-2. Dekompiler med [`jadx`](https://github.com/skylot/jadx) og les
-   `parent/vigilo/no/parentapplication/core/api/ApiConfig.java` — enum-verdiene
-   for `PROD` inneholder `baseUrl`, `client_id`, `client_secret` og redirect-URI.
-3. Legg nøklene i `~/.config/vigilo-connector/config.json`:
-
-```json
-{ "client_id": "...", "client_secret": "..." }
-```
-
-(Alternativt miljøvariablene `VIGILO_CLIENT_ID` / `VIGILO_CLIENT_SECRET`.)
-
-### 2. Installer og logg inn
+### Lokal installasjon og offline-tester
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e .
-.venv/bin/vigilo-login
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
-`vigilo-login` skriver ut en innloggings-URL. Åpne den i en nettleser og logg
-inn med ID-porten. Nettleseren ender til slutt på en
-`app://ch-parent-android.vigilo.no?code=...`-adresse — **det er suksess.** Lim
-hele adressen (eller bare `code`-verdien) inn i terminalen.
+Testene bruker fiktive tokens og HTTPX MockTransport, ikke ekte Vigilo-data.
+Det finnes ikke en godkjent innloggingsmetode for briefing-integrasjonen i
+denne forken ennå. Ikke hent klienthemmeligheter fra APK-er eller del tokens,
+cookies, callback-URL-er eller nettverksopptak med en agent eller ekstern server.
 
-Viktige detaljer:
-
-- Er du allerede innlogget hos Vigilo, hopper URL-en rett gjennom (SSO) og
-  redirecten skjer momentant. Chrome/Safari viser da bare en tom feilside for
-  `app://`-adressen og kan tømme adresselinjen. Åpne **DevTools → Network** og
-  huk av **Preserve log** *før* du starter — den feilede `app://`-requesten blir
-  liggende der med hele `code=...`.
-- Logg inn fra en maskin **uten** Vigilo-appen installert, ellers kan OS-et gi
-  redirecten til appen, som bruker opp engangskoden.
-- Koder er engangs og kortlevde. Feiler utvekslingen: start en ny innlogging.
-
-#### Headless innlogging (SSH / server uten skjerm)
-
-På en maskin uten nettleser kan du ikke fange `app://`-redirecten lokalt. Bruk
-`--from-curl` i stedet:
-
-```bash
-.venv/bin/vigilo-login --from-curl
-```
-
-Den skriver ut en authorize-URL. Gjør så dette i en desktop-nettleser (på en
-maskin uten Vigilo-appen), der du er innlogget hos Vigilo:
-
-1. Åpne **DevTools → Network**, naviger til den utskrevne URL-en.
-2. Høyreklikk `authorize`-requesten → **Copy → Copy as cURL**.
-3. Lim hele cURL-en inn i terminalen og avslutt med en linje `END` (eller Ctrl-D).
-
-Alternativt kan cURL-en leses fra fil eller pipe (mer robust for store blokker):
-
-```bash
-.venv/bin/vigilo-login --from-curl curl.txt      # fra fil
-pbpaste | ssh mini '~/Code/vigilo-connector/.venv/bin/vigilo-login --from-curl'   # pipe over SSH
-```
-
-Verktøyet henter sesjonscookiene ut av cURL-en, gjør authorize-kallet selv og
-fanger koden fra redirecten — ingen manuell jakt på `app://`-adressen. Nettleser
-og server trenger ikke være samme maskin.
-
-(Alternativt: kjør innloggingen på en maskin med nettleser og kopier
-`~/.config/vigilo-connector/tokens.json` over til serveren.)
-
-### 3. Registrer MCP-serveren i Claude Code
+### MCP-server (ikke en minimert eksport)
 
 ```bash
 claude mcp add vigilo -- /path/to/vigilo-connector/.venv/bin/vigilo-mcp
@@ -141,14 +96,15 @@ stdio-transport med samme kommando:
 | `consent_forms` | Samtykkeskjemaer (krever `organizationalUnitId`) |
 | `timetable` | Timeplan/ukesplan for en ISO-uke |
 | `scheduling_events` | Prøver/aktiviteter i timeplanen for en uke |
-| `api_get` / `web_api_get` | Rått GET mot app- hhv. web-API-et — for kartlegging |
 
 `childId` og `organizationalUnitId` får du fra `web_list_children`; begge er
 UUID-er. `week` er ISO-format `YYYY-WW` (default inneværende uke).
 
 ## Kartlagte web-endepunkter
 
-Base `https://web-parent.prod.vigilo-oas.no`, alle GET, Bearer-auth:
+Ruter fra upstream-kartleggingen, ikke live-verifisert for Oslo i denne forken.
+Base `https://web-parent.prod.vigilo-oas.no`, alle GET, Bearer-auth.
+GET garanterer ikke at en melding forblir ulest.
 
 - `/api/children/my` — barn (childId + `organizationalUnits`)
 - `/api/news-feed?childIds=&fromDate=&toDate=`
@@ -161,6 +117,14 @@ Base `https://web-parent.prod.vigilo-oas.no`, alle GET, Bearer-auth:
 
 ## Videre arbeid
 
-Vurderings-/karakter-endepunktet laster først etter valg av skoleår/termin i
-Vurdering-fanen og er ikke kartlagt ennå — sniff det med `web_api_get`. Nye
-endepunkter legges inn i `client.py` og eksponeres i `server.py`.
+Verifiser først offisiell web-innlogging i en dedikert lokal nettleserprofil,
+med manuell ID-porten og pause under sensitiv inntasting. Observer ekte ruter,
+lesestatus, originaldatoer, skole/AKS-dekning og senere gjenbruk av sesjonen
+før en fast-rute-adapter vurderes. Ikke anta at mobilklientens refresh-mekanisme
+gjelder nettleseren.
+
+En eventuell collector skal eksportere minimert innhold for bare det valgte
+barnet, med originale tidsstempler og eksplisitte dekningsbegrensninger.
+Nettlesercredentials blir lokale. Start uten vedleggsinnhold, og uten svar,
+samtykkeendringer, fraværsinnsending eller kalenderskriving. Oppsettet over
+starter eller planlegger ingen slik collector.

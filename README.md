@@ -167,12 +167,40 @@ Dette viser en nettleserfri vei **mens Vigilo-sesjonen er gyldig**, ikke et
 OAuth refresh-token eller en dokumentert langtidsintegrasjon. Ingen
 ID-porten-/BankID-cookies, mobilklienthemmeligheter eller nye scopes ble brukt.
 Credentials ble holdt i en privat lokal fil utenfor repoet, ikke overført
-til en annen maskin. Sesjonens senere-dag-levetid er fortsatt utestet.
+til en annen maskin. Senere samme dag returnerte den lagrede sesjonen
+`login_required`; en ny manuell innlogging var nødvendig. Etter flere
+grant-tester returnerte en ny baseline også `login_required`.
+Dette fastslår ikke en bestemt timeout eller årsak, men viser at den
+lagrede sesjonen ikke kan regnes som varig. Senere-dag-levetid er utestet.
 
 Den eksisterende `TokenStore` bruker mobilklientens refresh-grant og kan ikke
 bruke denne sesjonsbaserte metoden direkte. En ny, fast-origin web-auth-backend
 trengs før produksjonsbruk. Ved `login_required` eller annen interaksjon som
 kreves, må den stoppe og be om manuell innlogging, ikke håndtere BankID.
+
+### Forsøk på refresh-grant via web-klienten
+
+En test med den samme observerte web-klienten, registrerte callbacken,
+authorization code, S256 PKCE og `offline_access` ga ingen kode eller
+refresh-token. `prompt=none` endte i HTTP 200 HTML, uten OAuth-redirect eller
+form-post. Den eksisterende implisitte flyten fungerte samtidig etter
+manuell innlogging.
+
+Et interaktivt forsøk med `prompt=consent`, der brukeren selv skulle håndtere
+innlogging og samtykke, viste en generisk feil og nådde ikke callbacken.
+Ingen detaljert OAuth-feilkode ble eksponert. Derfor er den konkrete årsaken
+ikke fastslått; testen beviser ikke alene at klientregistreringen mangler
+code-grant. Et siste forsøk uten ekstra offline-scope stoppet allerede ved
+baselineens `login_required`, så det isolerte ikke scope fra grant-type.
+Ingen samtykke ble automatisk godkjent, og ingen klienthemmelighet ble brukt.
+
+Mobilsporet ble stoppet etter inventar, uten installasjon eller trafikkfangst.
+Testverten var Linux ARM64; Googles undersøkte SDK-manifest hadde Linux
+x86-64-emulatorarkiver, men ikke Linux ARM64-arkiver.
+Upstream-innloggingen skaffer refresh-token ved kodeutveksling med
+Android-klientens credentials, ikke ved å sniffe en kjørende app.
+Et fanget app-token er ikke nødvendigvis brukbart uten klientens
+autentiseringsmetode.
 
 ## Videre arbeid
 
